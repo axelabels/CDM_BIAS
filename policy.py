@@ -1,16 +1,11 @@
-# cython: language_level=3
-import numpy as np
-from math import log
 
-from tools import arr2str,softmax
+import numpy as np
+
+from tools import softmax
 
 
 
 class Policy(object):
-    """
-    A policy prescribes an action to be taken based on the memory of an agent.
-    """
-
     def __init__(self, b=1):
         self.b = b
         self.key = 'value'
@@ -55,12 +50,6 @@ class RandomPolicy(Policy):
 
 
 class EpsilonGreedyPolicy(Policy):
-    """
-    The Epsilon-Greedy policy will choose a random action with probability
-    epsilon and take the best apparent approach with probability 1-epsilon. If
-    multiple actions are tied for best choice, then a random action from that
-    subset is selected.
-    """
 
     def __init__(self, epsilon):
         self.epsilon = epsilon
@@ -81,11 +70,6 @@ class EpsilonGreedyPolicy(Policy):
 
 
 class GreedyPolicy(EpsilonGreedyPolicy):
-    """
-    The Greedy policy only takes the best apparent action, with ties broken by
-    random selection. This can be seen as a special case of EpsilonGreedy where
-    epsilon = 0 i.e. always exploit.
-    """
 
     def __init__(self):
         super().__init__(0)
@@ -115,11 +99,6 @@ class ProbabilityGreedyPolicy(Policy):
 
 
 class UCBPolicy(Policy):
-    """
-    The Upper Confidence Bound algorithm (UCB1). It applies an exploration
-    factor to the expected value of each arm which can influence a greedy
-    selection strategy to more intelligently explore less confident options.
-    """
 
     def __init__(self, beta=100):
         self.beta = beta
