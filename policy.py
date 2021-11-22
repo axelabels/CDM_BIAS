@@ -100,9 +100,8 @@ class ProbabilityGreedyPolicy(Policy):
 
 class UCBPolicy(Policy):
 
-    def __init__(self, beta=100):
-        self.beta = beta
-
+    def __init__(self):
+        pass 
     def __str__(self):
         return 'GPUCB' 
 

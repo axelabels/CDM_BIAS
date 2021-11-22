@@ -2,10 +2,9 @@ from functools import lru_cache
 from math import ceil
 import numpy as np
 from sklearn.neighbors import KNeighborsRegressor
-# from utils import BasicStatistics, RemovePolicy, Propaganda, setup_city_layout
 import copy
 from tools import *
-from tools import normalize, get_coords, sigmoid, mse, mae, corr2
+from tools import normalize, get_coords,  mse, mae
 from perlin import PerlinNoiseFactory
 from scipy.stats import wrapcauchy
 
@@ -86,8 +85,6 @@ STOCK_WEIGHTS = np.array([[1.09688638e-02, -9.83605295e-02, -3.88597338e-03,
                            7.71435160e-02, -2.12339988e-01,  2.94185012e-03]])
 
 
-FIXED_COORDS = {}
-
 
 class MetaBandit():
     def __init__(self, dims, k):
@@ -97,7 +94,7 @@ class MetaBandit():
 
 class PerlinBandit():
     def __init__(self, n_arms=1, complexity=2, precision=20, reset=True, invert=False,
-                 reduce_to=0, family='perlin', bernoulli=True):
+                 reduce_to=0,  bernoulli=True):
         self.expected_reward=.5
         self.dims = 2
         self.k = n_arms
@@ -107,7 +104,7 @@ class PerlinBandit():
         self.precision = precision
         self.invert = invert
         self.reduce_to = reduce_to
-        self.family = family
+        self.family = 'perlin'
 
         self.cached_contexts = None
         self.cached_values = None
