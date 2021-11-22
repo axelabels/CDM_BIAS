@@ -9,6 +9,9 @@ from sklearn.metrics import mean_squared_error as mse, mean_absolute_error as ma
 from collections import namedtuple
 Result = namedtuple('Result', ('prior', 'bias', 'std',
                                'A', 'N', 'tp', 'str', 'seed', 'scale'))
+def greedy_choice(a,axis=None):
+    max_values =np.amax(a,axis=axis,keepdims=True)
+    return (a==max_values).astype(np.float)
 
 
 def contains(s, l):

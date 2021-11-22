@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from tools import softmax
+from tools import greedy_choice, softmax
 
 
 
@@ -107,7 +107,7 @@ class UCBPolicy(Policy):
         return 'GPUCB' 
 
     def probabilities(self, agent, contexts):
-        self.pi = softmax(10000*agent.ucb_values(contexts))
+        self.pi = greedy_choice(agent.ucb_values(contexts))
         return self.pi
 
 class Exp3Policy(Policy):
@@ -125,22 +125,24 @@ class Exp3Policy(Policy):
 
 class SCBPolicy(Policy):
 
-    def __init__(self, eps=0):
-        self.eps = eps
+    def __init__(self, gamma=0):
+        self.gamma = gamma
         self.key = 'probability'
 
     def __str__(self):
         return 'SCB'
 
     def probabilities(self, agent, contexts):
-        assert self.eps==0
-        if self.eps == 0:
-            return agent.probabilities(contexts)
-        else:
-            p = agent.probabilities(contexts)
-            active_arms = (agent.bandit.get_active_arms(contexts))
-            k = len(p) if not agent.bandit.dynamic_arms else np.sum(active_arms)
-            ps = p * (1 - self.eps) + self.eps / k
-            ps[~active_arms] = 0
-            ps /= np.sum(ps)
-            return ps
+
+        values = agent.value_estimates(contexts)
+        best_arm = np.argmax(values)
+        self.pi = np.zeros_like(values)
+        self.pi[:] = 1 / \
+            (agent.bandit.k+self.gamma*(values[best_arm]-values))
+        self.pi[best_arm] += (1-(np.sum(self.pi)))
+
+        assert np.isclose(np.sum(self.pi),
+                            1), np.sum(self.pi)
+        assert (self.pi >= 0).all()
+        return self.pi
+

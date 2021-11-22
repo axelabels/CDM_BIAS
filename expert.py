@@ -10,11 +10,9 @@ from sklearn.gaussian_process.kernels import RationalQuadratic, PairwiseKernel
 from policy import *
 from tools import *
 
-SOFTMAX_POWER=1200
 
 EXPECTED_STD_REWARD = np.float64(.5)
 
-EXPECTED_MEAN_REWARD = np.float64(.5)
 
 MAX_SLICE_SIZE = 100
 RANDOM_CONFIDENCE = .5
@@ -114,7 +112,7 @@ class Agent(object):
             true_mu = np.clip(self.bandit.action_values, 0, 1)
             self.confidence = (np.ones(self.bandit.k) - np.abs(true_mu - pred_val))
         else:
-            self.confidence = .5 + np.clip(1 - uncertainty, 0, 1) / 2
+            self.confidence = RANDOM_CONFIDENCE + np.clip(1 - uncertainty, 0, 1) / 2
         if not value_mode:
             self.confidence[:] = gmean(self.confidence,axis=1)
 
@@ -130,7 +128,7 @@ class Agent(object):
             self.cached_predictions =np.moveaxis(self.cached_predictions,1,0)
             self.cached_predictions[:, 0] = scale(self.cached_predictions[:, 0])
             self.cache_id = bandit.cache_id
-            self.cached_probabilities = softmax(SOFTMAX_POWER*self.cached_predictions[:, 0], axis=1)
+            self.cached_probabilities = greedy_choice(self.cached_predictions[:, 0], axis=1)
             recomputed=True
         elif len(self.cached_predictions) > trials:
             self.cached_predictions = self.cached_predictions[:trials]
@@ -180,7 +178,7 @@ class Agent(object):
 
 class KernelUCB(Agent):
     MAX_SPREAD = 0.5
-    EXPLORATORY=True
+    EXPLORATORY=False
     KERNELS = [RationalQuadratic(alpha=.1), PairwiseKernel(metric='laplacian')]
     def __init__(self, bandit, policy, gamma=.1,beta=1, kernel=None):
         
@@ -238,7 +236,7 @@ class KernelUCB(Agent):
                 samp=bandit.sample().astype(float)
                 for arm in range(self.bandit.k): 
                     self.context_history[arm].append(contexts)
-                    self.reward_history[arm].append(samp[arm,0])
+                    self.reward_history[arm].append(samp[arm])
                     
             for arm in range(self.bandit.k):
                 self.update_kinv(arm)
@@ -268,7 +266,7 @@ class KernelUCB(Agent):
             
         if len(np.shape(contexts))==1:
             contexts = contexts[np.newaxis,:]
-        mu = np.zeros(len(contexts)) + .5
+        mu = np.zeros(len(contexts)) + self.bandit.expected_reward
         sigma = np.ones(len(contexts))
 
         if len(self.context_history[arm]) <= 1:
@@ -279,7 +277,7 @@ class KernelUCB(Agent):
         
         context_history = normalize(self.context_history[arm], offset=con_mu, scale=con_std)
         normalized_contexts = normalize(contexts, offset=con_mu, scale=con_std)
-        reward_history = normalize(self.reward_history[arm], offset=EXPECTED_MEAN_REWARD, scale=EXPECTED_STD_REWARD)
+        reward_history = normalize(self.reward_history[arm], offset=self.bandit.expected_reward, scale=EXPECTED_STD_REWARD)
         
         # Intermediary results below can occupy a lot of space if contexts is large, compute results by slices
         slice_size = min(MAX_SLICE_SIZE, len(normalized_contexts))
@@ -290,7 +288,7 @@ class KernelUCB(Agent):
             
             k_x_Kinv = k_x.dot(self.k_inv_history[arm])
             
-            mu[lo:hi] = rescale(k_x_Kinv.dot(reward_history), EXPECTED_MEAN_REWARD, EXPECTED_STD_REWARD)
+            mu[lo:hi] = rescale(k_x_Kinv.dot(reward_history), self.bandit.expected_reward, EXPECTED_STD_REWARD)
             sigma[lo:hi] = np.sqrt(np.maximum(0, 1 - (k_x_Kinv*k_x).sum(-1)))
 
         return mu, sigma
