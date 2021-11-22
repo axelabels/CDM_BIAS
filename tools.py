@@ -7,8 +7,8 @@ from sklearn.metrics import mean_squared_error as mse, mean_absolute_error as ma
 
 def greedy_choice(a, axis=None):
     max_values = np.amax(a, axis=axis, keepdims=True)
-    return (a == max_values).astype(np.float)
-
+    choices = (a == max_values).astype(np.float)
+    return choices / np.sum(choices,axis=axis,keepdims=True)
 
 def prob_round(x):
     x = np.asarray(x)

@@ -25,10 +25,7 @@ class Policy(object):
         self.pi = self.probabilities(agent, contexts)
         
         if greedy:
-            check = np.where(self.pi == self.pi.max())[0]
-            self.pi[:] = 0
-            self.pi[check] = 1 / len(check)
-
+            self.pi = greedy_choice(self.pi)
         np.testing.assert_allclose(np.sum(self.pi),1)
         action = np.searchsorted(np.cumsum(self.pi), np.random.rand(1))[0]
 
@@ -59,13 +56,10 @@ class EpsilonGreedyPolicy(Policy):
         return 'eps'.format(self.epsilon)
 
     def probabilities(self, agent, contexts):
-        self.pi = np.empty(agent.bandit.k)
-        self.pi.fill(self.epsilon / agent.bandit.k)
         v = agent.value_estimates(contexts)
-        check = np.where(v == v.max())[0]
-    
-        self.pi[check] += (1 - self.epsilon) / len(check)        
-        
+        self.pi = greedy_choice(v)       
+        self.pi *= (1-self.epsilon)
+        self.pi += self.epsilon/agent.bandit.k
         return self.pi
 
 
@@ -89,11 +83,10 @@ class ProbabilityGreedyPolicy(Policy):
 
     def probabilities(self, agent, contexts):
         
-        self.pi = agent.probabilities(contexts)
-        check = np.where(np.array(self.pi) == self.pi.max())[0]
-
-        self.pi[:]=self.epsilon / agent.bandit.k
-        self.pi[check] += (1 - self.epsilon) / len(check)
+        self.pi = greedy_choice(agent.probabilities(contexts))
+        self.pi *= (1-self.epsilon)
+        self.pi += self.epsilon/agent.bandit.k
+        
 
         return self.pi
 
@@ -140,8 +133,5 @@ class SCBPolicy(Policy):
             (agent.bandit.k+self.gamma*(values[best_arm]-values))
         self.pi[best_arm] += (1-(np.sum(self.pi)))
 
-        assert np.isclose(np.sum(self.pi),
-                            1), np.sum(self.pi)
-        assert (self.pi >= 0).all()
         return self.pi
 

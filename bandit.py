@@ -152,7 +152,7 @@ class PerlinBandit():
     def from_bandit(self, desired_distance, enforce_distance=True, family=None):
         prior_bandit = PerlinBandit(self.k, self.complexity, self.precision, reset=False,
                                     invert=self.invert,
-                                    reduce_to=self.reduce_to, family=family, )
+                                    reduce_to=self.reduce_to,  )
 
         assert 0 <= desired_distance <= 1, desired_distance
         for i, sub_bandit in enumerate(self.perlin_functions):
