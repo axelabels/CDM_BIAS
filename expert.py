@@ -120,7 +120,7 @@ class Agent(object):
         return self.confidence
 
     def cache_predictions(self, bandit, trials):
-        recomputed=False
+        
         if not self.is_prepared(bandit.cache_id) or len(self.cached_predictions) < trials:
             self.cached_predictions = np.array(self.predict_normalized(bandit.cached_contexts))
 
@@ -133,7 +133,7 @@ class Agent(object):
         elif len(self.cached_predictions) > trials:
             self.cached_predictions = self.cached_predictions[:trials]
             self.cached_probabilities = self.cached_probabilities[:trials]
-            
+            recomputed=False
         return recomputed
     def cache_confidences(self, bandit,  value_mode, confidence_rho,oracle_confidence=True):
 
@@ -232,10 +232,11 @@ class KernelUCB(Agent):
                 self.observe(reward, action, contexts)
         else: # batch training
             for _ in range(steps):
-                contexts=bandit.observe_contexts(center=self.center, spread=spread, k=1)
+                contexts=bandit.observe_contexts(center=self.center, k=1)
                 samp=bandit.sample().astype(float)
                 for arm in range(self.bandit.k): 
                     self.context_history[arm].append(contexts)
+
                     self.reward_history[arm].append(samp[arm])
                     
             for arm in range(self.bandit.k):
@@ -249,7 +250,6 @@ class KernelUCB(Agent):
 
         
     def predict_normalized(self, contexts,arm=None, slice_size=None,batch=True):
- 
 
         if not batch:
             assert arm is None
@@ -267,6 +267,7 @@ class KernelUCB(Agent):
         if len(np.shape(contexts))==1:
             contexts = contexts[np.newaxis,:]
         mu = np.zeros(len(contexts)) + self.bandit.expected_reward
+       
         sigma = np.ones(len(contexts))
 
         if len(self.context_history[arm]) <= 1:
@@ -287,7 +288,7 @@ class KernelUCB(Agent):
             k_x = self.kernel(normalized_contexts[lo:hi], context_history)
             
             k_x_Kinv = k_x.dot(self.k_inv_history[arm])
-            
+            # print(np.shape(reward_history),np.shape(k_x_Kinv),np.shape(k_x_Kinv.dot(reward_history)))
             mu[lo:hi] = rescale(k_x_Kinv.dot(reward_history), self.bandit.expected_reward, EXPECTED_STD_REWARD)
             sigma[lo:hi] = np.sqrt(np.maximum(0, 1 - (k_x_Kinv*k_x).sum(-1)))
 

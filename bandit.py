@@ -549,11 +549,6 @@ class DatasetBandit(PerlinBandit):
     def grid_data(self):
         return self.value_landscapes
 
-    @property
-    def expected_reward(self):
-        if self.cached_contexts is None:
-            return np.mean(self.grid_data)
-        return np.mean(self.cached_rewards)
 
     def from_bandit(self, desired_distance, enforce_distance=True,  verbose=False, precomputed_permutations=True):
 
@@ -565,7 +560,7 @@ class DatasetBandit(PerlinBandit):
         for _ in range(MAX_ATTEMPTS_BANDIT_DISTANCE):
 
             desired_distance_copy = desired_distance
-            prior_bandit = DatasetBandit(self.k, self.complexity, self.precision, reset=False,
+            prior_bandit = DatasetBandit( self.precision, reset=False,
                                          invert=self.invert,  reduce_to=self.reduce_to, family=self.family,  verbose=verbose)
 
             prior_bandit.reset()
@@ -685,7 +680,7 @@ class DatasetBandit(PerlinBandit):
         if k is None:
             k = self.k
 
-        self.contexts = np.zeros((self.k, self.dims))
+        self.contexts = np.zeros((self.dims,))
         if steps is not None:
 
             if steps > len(self.X):  # random experiences
@@ -703,9 +698,9 @@ class DatasetBandit(PerlinBandit):
         else:
             indices = np.random.choice(
                 len(self.X), size=1, replace=k < len(self.X))
-        self.contexts[:, :] = self.X[indices][None]
+        self.contexts[ :] = self.X[indices]
 
-        self.action_values = self.get(self.contexts)
+        self.action_values = self.get(self.contexts[None,:])[0]
         self.optimal_value = np.max(self.action_values)
 
         return self.contexts
