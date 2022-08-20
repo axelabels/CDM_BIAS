@@ -1,3 +1,4 @@
+from scipy import stats
 import math
 import re
 import numpy as np
@@ -8,28 +9,72 @@ from sklearn.metrics import mean_squared_error as mse, mean_absolute_error as ma
 def greedy_choice(a, axis=None):
     max_values = np.amax(a, axis=axis, keepdims=True)
     choices = (a == max_values).astype(np.float)
-    return choices / np.sum(choices,axis=axis,keepdims=True)
-
-def prob_round(x):
-    x = np.asarray(x)
-    probs = x - np.floor(x)
-    added = probs > np.random.uniform(size=np.shape(probs))
-    return (np.floor(x)+added).astype(int)
+    return choices / np.sum(choices, axis=axis, keepdims=True)
 
 
-def permutate(v, n):
-    assert n != 1
-    v = np.copy(v)
-    if n == 0:
-        return v
-    orig = np.random.choice(len(v), size=n, replace=False)
-    dest = np.copy(orig)
-    dest[:-1] = orig[1:]
-    dest[-1] = orig[0]
-    straight = np.arange(len(v))
-    straight[orig] = straight[dest]
+import sys
 
-    return v[straight]
+
+def get_err_advice(truth,dist):
+    b = np.random.uniform(0,1,size=truth.shape)
+
+    # w_0 =max(0,(1-dist))**1
+    # w_1 = max(0,(dist))**1
+    # return np.clip(truth *w_0 + w_1*(1-truth) + np.random.normal(0,.2) ,0,1)
+
+    w_0 =max(0,(1-2*dist))**1
+    w_1 = max(0,(2*dist-1))**1
+    w_r = 1-w_0-w_1
+    return truth *w_0 + b*w_r+ w_1*(1-truth)
+    # p=3.5
+    # assert 0<=dist <=1
+    # r = 1 - (1-dist)**p - dist**p
+    # # print(r,(1-dist)**2 , dist**2 )
+    # return truth *(1-dist)**p + r*b+ dist**p*(1-truth)
+
+   
+def df_to_sarray(df):
+    """
+    Convert a pandas DataFrame object to a numpy structured array.
+    Also, for every column of a str type, convert it into 
+    a 'bytes' str literal of length = max(len(col)).
+
+    :param df: the data frame to convert
+    :return: a numpy structured array representation of df
+    """
+
+    def make_col_type(col_type, col):
+        try:
+            if 'numpy.object_' in str(col_type.type):
+                maxlens = col.dropna().str.len()
+                if maxlens.any():
+                    maxlen = maxlens.max().astype(int) 
+                    col_type = 'S%s' % maxlen# ('S%s' % maxlen, 1)
+                else:
+                    col_type = 'f2'
+            return col.name, col_type
+        except:
+            print(col.name, col_type, col_type.type, type(col))
+            raise
+
+    v = df.values            
+    types = df.dtypes
+    numpy_struct_types = [make_col_type(types[col], df.loc[:, col]) for col in df.columns]
+    # print(numpy_struct_types)
+    dtype = np.dtype(numpy_struct_types)
+    z = np.zeros(v.shape[0], dtype)
+    for (i, k) in enumerate(z.dtype.names):
+        # This is in case you have problems with the encoding, remove the if branch if not
+        try:
+            if dtype[i].str.startswith('|S'):
+                z[k] = df[k].str.encode('latin').astype('S')
+            else:
+                z[k] = v[:, i]
+        except:
+            print(k, v[:, i])
+            raise
+
+    return z, dtype
 
 
 def arr2str(array):
@@ -54,50 +99,10 @@ def safe_logit(p, eps=1e-6):
 def SMInv(Ainv, u, v, alpha=1):
     u = u.reshape((len(u), 1))
     v = v.reshape((len(v), 1))
+    # print(np.dot(np.dot(u, v.T), Ainv))
     return Ainv - np.dot(Ainv, np.dot(np.dot(u, v.T), Ainv)) / (1 + np.dot(v.T, np.dot(Ainv, u)))
 
 
 def randargmax(b, **kw):
     return np.argmax(np.random.random(b.shape) * (b == b.max()), **kw)
 
-
-def scale(a):
-    return normalize(a, offset=np.min(a), scale=np.ptp(a))
-
-
-def max_scale(a):
-    return normalize(a, offset=np.min(a), scale=np.ptp(a) if np.ptp(a) != 0 else 1e-9)
-
-
-def normalize(a, offset=None, scale=None, axis=None):
-    a = np.asarray(a)
-    if offset is None:
-        offset = np.mean(a, axis=axis)
-    if scale is None:
-        scale = np.std(a, axis=axis)
-    if type(scale) in (float, np.float64, np.uint8, np.int64):
-        if scale == 0:
-            print(f"forcing scale to 1, was {scale}")
-            scale = 1
-    else:
-        try:
-            scale[scale == 0] = 1
-        except:
-            print("a:", np.shape(a), "scale:", np.shape(scale), scale)
-            raise
-    return (a - offset) / scale
-
-
-def rescale(a, mu, std):
-    a = np.asarray(a)
-    return a * std + mu
-
-
-def get_coords(dims=2, complexity=3, precision=100, flatten=True):
-
-    lin = np.linspace(0, complexity, int(
-        (precision)**(2/dims)) + 1, endpoint=True)
-    coords = np.array(np.meshgrid(*(lin for _ in range(dims)))).T / complexity
-    if flatten:
-        coords = coords.reshape((-1, dims))
-    return coords

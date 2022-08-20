@@ -1,11 +1,12 @@
+from collections import Counter
 from functools import lru_cache
 from math import ceil
+from matplotlib.pyplot import jet
 import numpy as np
 from sklearn.neighbors import KNeighborsRegressor
 import copy
 from tools import *
-from tools import normalize, get_coords,  mse, mae
-from perlin import PerlinNoiseFactory
+
 from scipy.stats import wrapcauchy
 
 import pandas as pd
@@ -92,112 +93,81 @@ class MetaBandit():
         self.k = k
 
 
-class PerlinBandit():
-    def __init__(self, n_arms=1, complexity=2, precision=20, reset=True, invert=False,
-                 reduce_to=0,  bernoulli=True):
-        self.expected_reward=.5
-        self.dims = 2
+
+UPPER = .8
+
+def shuffle_along_axis(a, axis):
+    idx = np.random.rand(*a.shape).argsort(axis=axis)
+    return np.take_along_axis(a,idx,axis=axis)
+def shape_rewards(a,x):
+    return a**x
+class ArtificialBandit():
+    def __init__(self, n_arms=1, smoothness=0,  bernoulli=True):
         self.k = n_arms
-        self.cache_id = -1
-        self.bernoulli = bernoulli
-        self.int_columns = True
-        self.precision = precision
-        self.invert = invert
-        self.reduce_to = reduce_to
-        self.family = 'perlin'
-
+        self.smoothness = smoothness 
+        self.bernoulli=bernoulli
         self.cached_contexts = None
-        self.cached_values = None
-        self.cached_rewards = None
-        self.last_contexts = None
-
-        self.complexity = complexity
-        self._value_landscapes = None
-        self.perlin_functions = [Perlin(complexity=complexity,
-                                        precision=precision,
-                                        bernoulli=self.bernoulli) for _ in range(n_arms)]
-
-        if reset:
-            self.reset()
-
-
-    def update_value_landscapes(self):
-        grid_data = get_coords(self.dims, self.complexity, self.precision)
-        self._value_landscapes = np.array(
-            [s.get(grid_data, override=True) for s in self.perlin_functions])
-
+        self.dims=1
+        #np.repeat(np.arange(10)[None],10,axis=0)
     @property
-    def value_landscapes(self):
-        if self._value_landscapes is None:
-            self.update_value_landscapes()
-
-        return self._value_landscapes
-
-    def max_distance(self):
-        return np.mean([s.max_distance() for s in self.perlin_functions])
-
-    def distance(self, other):
-        return np.mean([Perlin.DISTANCE_METRIC(o.value_landscape, s.value_landscape) for o, s in zip(other.perlin_functions, self.perlin_functions)])
-
-    @property
-    def grid_data(self):
-        return self.value_landscapes
-
-    def summary(self):
-        return ", ".join([s.summary() for s in self.perlin_functions])
-
-    def convert(self, family):
-        [s.convert(family) for s in self.perlin_functions]
-
-    def from_bandit(self, desired_distance, enforce_distance=True, family=None):
-        prior_bandit = PerlinBandit(self.k, self.complexity, self.precision, reset=False,
-                                    invert=self.invert,
-                                    reduce_to=self.reduce_to,  )
-
-        assert 0 <= desired_distance <= 1, desired_distance
-        for i, sub_bandit in enumerate(self.perlin_functions):
-            prior_bandit.perlin_functions[i] = sub_bandit.from_bandit(
-                desired_distance=desired_distance, enforce_distance=enforce_distance)
-        prior_bandit.update_value_landscapes()
-        return prior_bandit
+    def expected_reward(self):
+        return .5 if self.smoothness==2 else 1/self.k# np.mean(self.generate_random_values((1,self.k)))
 
     def reset(self):
-        for s in self.perlin_functions:
-            s.reset()
-
         self.cached_contexts = None
-        self.update_value_landscapes()
+    
+        
 
-    def get(self, contexts, override=True, force_repeat=False):
-
-        assert np.shape(contexts)[1:] == (self.dims,), str(
-            (np.shape(contexts), " and ", (self.dims,)))
-
-        return np.array([s.get(contexts[:], override) for i, s in enumerate(self.perlin_functions)]).T
-
-    def observe_contexts(self, center=.5, spread=1, k=None, cache_index=None):
-        if cache_index is not None:
-            self.contexts = self.cached_contexts[cache_index]
-            self.action_values = self.cached_values[cache_index]
+    def generate_random_values(self,shape):
+        if self.smoothness==2:
+            values = np.repeat(np.arange(self.k)[None],shape[0],axis=0)
+            values  = shuffle_along_axis(values ,axis=1)
+            values = values/(self.k-1) * .8 + .1 
+            return values
+            # return np.random.beta(.5,.5,size=shape)#*(2*UPPER-1) + (1-UPPER)
+            return np.random.uniform(size=shape)#*.8+.1#*(2*UPPER-1) + (1-UPPER)
         else:
-            if k is None:
-                k = self.k
-            self.contexts = np.random.uniform(
-                center - spread / 2, center + spread / 2, size=(self.dims))
+            values = np.repeat(np.arange(self.k)[None],shape[0],axis=0)
+            # print("cache",self.cached_values[0])
+            # fghfg
+                # self.cached_values /= np.sum(self.cached_values,axis=1)[:,None]
+            # print("smooth",self.smoothness,self.cached_values[0])
+            # dfgdfg
+            values  = shuffle_along_axis(values ,axis=1)
+            # assert (0<=self.cached_values).all() 
+            # assert (1>=self.cached_values).all() 
+            # print(np.max(self.cached_values),np.min(self.cached_values),np.mean(self.cached_values))
+            values  = softmax(np.log(10)*values ,axis=1)
+            return values
+      
 
-            self.contexts = self.contexts % 1
-            self.action_values = self.get(self.contexts[None, :])[0]
-        self.optimal_value = np.max(self.action_values)
+    
 
-        return self.contexts
-
-    def cache_contexts(self, t, cache_id, activity_p=1):
-
+    def cache_contexts(self, t, cache_id):
         if self.cached_contexts is None or len(self.cached_contexts) != t:
             self.cached_contexts = np.random.uniform(
                 0, 1, size=(t,  self.dims))
 
-            self.cached_values = self.get(self.cached_contexts)
+            
+            self.cached_values = self.generate_random_values((t,self.k)) # 
+            if self.smoothness==10:
+                # self.cached_values = np.repeat(np.arange(self.k)[None]/(self.k-1),t,axis=0)
+                self.cached_values = np.repeat(np.arange(self.k)[None],t,axis=0)
+            # print("cache",self.cached_values[0])
+            # fghfg
+                # self.cached_values /= np.sum(self.cached_values,axis=1)[:,None]
+            # print("smooth",self.smoothness,self.cached_values[0])
+            # dfgdfg
+                self.cached_values  = shuffle_along_axis(self.cached_values ,axis=1)
+                # assert (0<=self.cached_values).all() 
+                # assert (1>=self.cached_values).all() 
+                # print(np.max(self.cached_values),np.min(self.cached_values),np.mean(self.cached_values))
+                self.cached_values  = softmax(np.log(10)*self.cached_values ,axis=1)
+                # print(np.max(self.cached_values),np.min(self.cached_values),np.mean(self.cached_values))
+                # self.cached_values = shape_rewards(self.smoothness,self.cached_values)
+                assert (0<=self.cached_values).all() 
+                assert (1>=self.cached_values).all() 
+
             assert np.shape(self.cached_values) == (
                 t, self.k), (np.shape(self.cached_values), (t, self.k))
             self.cached_rewards = self.sample(self.cached_values)
@@ -207,14 +177,14 @@ class PerlinBandit():
 
         return self.cached_contexts
 
-    def pull(self, action, cache_index=None):
-        if cache_index is not None:
-            return self.cached_rewards[cache_index, action], action == np.argmax(self.cached_values[cache_index])
-        if self.bernoulli:
-            return np.random.uniform() < self.action_values[action], action == np.argmax(self.action_values)
-        else:
-            return self.action_values[action], action == np.argmax(self.action_values)
+    def observe_contexts(self, center=.5, spread=1, k=None, cache_index=None):
+        
+        self.contexts = self.cached_contexts[cache_index]
+        self.action_values = self.cached_values[cache_index]
+       
+        self.optimal_value = np.max(self.action_values)
 
+        return self.contexts
     def sample(self, values=None, cache_index=None):
         if cache_index is not None:
             return self.cached_rewards[cache_index]
@@ -222,499 +192,7 @@ class PerlinBandit():
         if values is None:
             values = self.action_values
         if self.bernoulli:
+            
             return np.random.uniform(size=np.shape(values)) < values
         else:
             return values
-
-
-class Perlin():
-    DISTANCE_METRIC = mse
-
-    def __init__(self, n_arms=1, complexity=2, precision=None, dimensions=2, reset=True, invert=False,  bernoulli=True):
-        self.precision = precision if precision is not None else int(
-            np.round((4000)**(1/dimensions)))
-        self.grid_data = None
-        self._value_landscape = None
-        self.family = 'perlin'
-
-        self.invert = invert
-
-        self.dims = dimensions
-        self.complexity = complexity
-        self.power = 1
-
-        self.k = n_arms
-
-        self._value_landscape = None
-
-        self.cache_id = -1
-
-        self.bernoulli = bernoulli
-        if reset:
-            self.reset()
-
-    def reset(self, gradients=None, noise=0):
-
-        self.cache_id = -1
-        if gradients is not None:
-            new_gradients = {}
-            for k, v in gradients.items():
-                angle = np.arctan2(*v)
-                sign = np.random.choice((-1, 1))
-                r = angle+sign*noise**.8*np.pi+wrapcauchy.rvs(0.99)
-
-                new_gradients[k] = np.array([np.sin(r), np.cos(r)])
-            self.fac = PerlinNoiseFactory(
-                self.dims,  gradients=new_gradients)
-        else:
-            self.fac = PerlinNoiseFactory(self.dims)
-        random_points = np.random.uniform(
-            size=(2, self.dims)) * self.complexity
-        self.fac(random_points)
-        self._value_landscape = None
-
-        self.min_val = -1
-        self.max_val = 1
-        self.mean_value = 0.5
-
-    def max_distance(self):
-        return Perlin.DISTANCE_METRIC(1 - self.value_landscape,
-                                      self.value_landscape)
-
-    def distance(self, other):
-        return Perlin.DISTANCE_METRIC(other.value_landscape,
-                                      self.value_landscape)
-
-    @property
-    def value_landscape(self):
-        if self._value_landscape is None:
-            grid_data = get_coords(self.dims, self.complexity, self.precision)
-            self._value_landscape = self.get(grid_data, override=True)
-        return self._value_landscape
-
-    def get(self, contexts, override=None):
-        scaled_contexts = np.asarray(contexts) * self.complexity
-        values = self.fac(scaled_contexts)
-        values = ((values - self.min_val) /
-                  (self.max_val - self.min_val))
-
-        return values
-
-    def from_bandit(self, desired_distance, enforce_distance=True):
-
-        best_bandit = None
-        best_score = INF
-
-        for attempts in range(MAX_ATTEMPTS_BANDIT_DISTANCE):
-            prior_bandit = Perlin(
-                self.k, self.complexity, self.precision, dimensions=self.dims, reset=False)
-
-            gradients = copy.deepcopy(self.fac.gradient)
-
-            noise = desired_distance
-
-            if enforce_distance and desired_distance > .5:
-                for k in gradients:
-                    gradients[k] = -gradients[k]
-
-                noise = 1 - desired_distance
-            prior_bandit.reset(gradients, noise=noise)
-
-            max_distance = self.max_distance()
-            score = np.abs(self.distance(prior_bandit) /
-                           max_distance - desired_distance)
-
-            if score < best_score:
-                best_bandit, best_score = prior_bandit, score
-
-            if not enforce_distance or score <= BANDIT_DISTANCE_EPSILON:
-                break
-        else:
-            prior_bandit = best_bandit
-        return prior_bandit
-
-
-DATA_ROOT = "./"
-dic_int_columns = {}
-dic_og_columns = {}
-dic_mapped_columns = {}
-dic_excl_columns = {}
-
-
-@lru_cache(None)
-def get_permutation_list(family):
-    return np.load(DATA_ROOT+f"datasets/{family}/saved_permutations.npy", allow_pickle=True)
-
-
-@lru_cache(None)
-def get_df_data(family):
-    if family == 'mushroom':
-
-        int_columns = False
-        MUSHROOMS_CSV = DATA_ROOT+"datasets/mushroom/data/mushroom_csv.csv"
-        MUSHROOM_DF = pd.read_csv(MUSHROOMS_CSV)
-        og_columns = MUSHROOM_DF.columns
-        excl_columns = 'class'
-        MUSHROOM_DF = pd.get_dummies(MUSHROOM_DF).rename(
-            columns={'class_e': 'reward0'})
-        mapped_columns = MUSHROOM_DF.columns
-        
-        k = 2
-        df = MUSHROOM_DF
-        bernoulli = True
-        expected_reward=1/k
-    elif family == "shuttle":
-        int_columns = True
-        SHUTTLE_CSV = DATA_ROOT+"datasets/shuttle/shuttle.tst"
-        SHUTTLE_DF = (pd.read_csv(SHUTTLE_CSV, sep=' ', header=None))
-        SHUTTLE_DF = pd.concat(
-            (SHUTTLE_DF.drop(9, axis=1), pd.get_dummies(SHUTTLE_DF[9])), axis=1)
-
-        k = 7
-        df = SHUTTLE_DF
-        bernoulli = True
-        expected_reward=1/k
-
-    elif family == "covtype":
-
-        COVTYPE_CSV = DATA_ROOT+"datasets/covtype/covtype.data"
-        int_columns = False
-
-        FEATURE_NAMES = ["Elevation",
-                         "Aspect",
-                         "Slope",
-                         "Horizontal_Distance_To_Hydrology",
-                         "Vertical_Distance_To_Hydrology",
-                         "Horizontal_Distance_To_Roadways",
-                         "Hillshade_9am",
-                         "Hillshade_Noon",
-                         "Hillshade_3pm",
-                         "Horizontal_Distance_To_Fire_Points"]
-        FEATURE_NAMES += [f"Wilderness_Area_{i}" for i in range(4)]
-        FEATURE_NAMES += [f"Soil_Type_{i}" for i in range(40)]
-        FEATURE_NAMES += ["Cover_Type"]
-
-        COVTYPE_DF = (pd.read_csv(COVTYPE_CSV, sep=',',
-                                  header=None, names=FEATURE_NAMES))
-
-        og_columns = np.array(["Elevation",
-                               "Aspect",
-                               "Slope",
-                               "Horizontal_Distance_To_Hydrology",
-                               "Vertical_Distance_To_Hydrology",
-                               "Horizontal_Distance_To_Roadways",
-                               "Hillshade_9am",
-                               "Hillshade_Noon",
-                               "Hillshade_3pm",
-                               "Horizontal_Distance_To_Fire_Points", "Wilderness_Area", "Soil_Type", "Cover_Type"])
-        excl_columns = ('Cover_Type',)
-        COVTYPE_DF = pd.concat((COVTYPE_DF.drop(
-            'Cover_Type', axis=1), pd.get_dummies(COVTYPE_DF['Cover_Type'])), axis=1)
-        mapped_columns = COVTYPE_DF.columns
-
-        k = 7
-        df = COVTYPE_DF
-        bernoulli = True
-        expected_reward=1/k
-
-    elif family == "adult":
-
-        int_columns = False
-
-        ADULT_CSV = DATA_ROOT+"datasets/adult/adult.data"
-        ADULT_DF = (pd.read_csv(ADULT_CSV, sep=',', header=None, names=('age', 'workclass', 'fnlwgt', 'education',
-                                                                        'education_num', 'marital_status', 'occupation', 'relationship', 'race', 'sex',
-                                                                        'capital_gain', 'capital_loss', 'hours_per_week', 'native_country', 'income')))
-        ADULT_DF = ADULT_DF[ADULT_DF['occupation'] != ' ?']
-        og_columns = ADULT_DF.columns
-        excl_columns = ('occupation', 'fnlwgt', 'education-num',)
-        order = ADULT_DF.columns
-        order = [
-            i for i in order if i not in excl_columns]+['occupation']
-        ADULT_DF = pd.get_dummies(ADULT_DF[order])
-        mapped_columns = ADULT_DF.columns
-
-        k = 14
-        df = ADULT_DF
-        bernoulli = True
-        expected_reward=1/k
-    elif family == "census":
-
-        int_columns = False
-
-        CENSUS_CSV = DATA_ROOT+"datasets/census/USCensus1990.data.txt"
-        CENSUS_DF = (pd.read_csv(CENSUS_CSV, sep=','))
-        CENSUS_DF = CENSUS_DF.astype(str)
-        order = CENSUS_DF.columns[:]
-        og_columns = order
-        excl_columns = ('dOccup', 'caseid',)
-        order = [i for i in order if i not in excl_columns]+['dOccup']
-        CENSUS_DF = pd.get_dummies(CENSUS_DF[order])
-        mapped_columns = CENSUS_DF.columns
-
-        k = 9
-        df = CENSUS_DF
-        bernoulli = True
-        expected_reward=1/k
-    elif family == "jester":
-        int_columns = True
-
-        JESTER_NPY = DATA_ROOT+"datasets/jester/jester_data_40jokes_19181users.npy"
-        JESTER_DF = pd.DataFrame(np.load(JESTER_NPY)/20+.5)
-
-        k = 8
-        df = JESTER_DF
-        expected_reward=0.5
-    elif family == "stocks":
-        int_columns = True
-        STOCKS_CSV = DATA_ROOT+"datasets/stocks/raw_stock_contexts"
-        STOCKS_DF = (pd.read_csv(STOCKS_CSV, sep=' '))
-
-        rewards = STOCKS_DF.dot(STOCK_WEIGHTS.T)
-        rews = ((rewards-np.min(rewards.values.flatten())) /
-                np.ptp(rewards.values.flatten())).values
-        STOCKS_DF = pd.DataFrame(pd.np.column_stack([STOCKS_DF, rews]))
-
-        k = 8
-        df = STOCKS_DF
-        bernoulli = False
-        expected_reward=0.5
-    else:
-        raise Exception(f"Dataset family '{family}' unknown")
-
-    return int_columns, None if int_columns else og_columns, None if int_columns else excl_columns, None if int_columns else mapped_columns, k, df, bernoulli,expected_reward
-
-
-class DatasetBandit(PerlinBandit):
-    metric = mse
-
-    def __init__(self, precision=200, reset=True, invert=False,  reduce_to=0, family='mushroom',  verbose=False, bernoulli=False):
-
-        self.bernoulli = bernoulli
-
-        
-        self.int_columns, self.og_columns, self.excl_columns, self.mapped_columns, self.k, self.df, self.bernoulli,self.expected_reward = get_df_data(
-            family)
-
-        X_step = ceil(len(self.df)/DATASET_SUBSET_SIZE)
-        self.X = self.df.values[::X_step, :-self.k]
-        self.X = normalize(self.X, axis=0)
-
-        self.Y = self.df.values[::X_step, -self.k:]
-        if verbose:
-            sampled_instance = np.random.choice(len(self.Y))
-            print(
-                f"dataset {family} of shape {self.X.shape} {self.df.shape} with {self.k} arms,example arm: {self.Y[sampled_instance]} mean {np.round(np.mean(self.Y,axis=0),5)}")
-        self.step_size = ceil(len(self.X)/DISTANCE_SUBSET_SIZE)
-        self.oracle = KNeighborsRegressor(
-            n_neighbors=1,  leaf_size=500).fit(self.X, self.Y)
-        self.reduced_oracle = KNeighborsRegressor(n_neighbors=1,  leaf_size=500).fit(
-            self.X[::self.step_size], self.Y[::self.step_size])
-        self.dims = self.X.shape[-1]
-        self.cache_id = -1
-        self.precision = precision
-        self.invert = invert
-        self.reduce_to = reduce_to
-        self.cached_all_indices = {}
-        self.family = family
-
-        self.cached_contexts = None
-        self.cached_values = None
-        self.cached_rewards = None
-        self._value_landscapes = None
-        self.permutation_list = None
-        self.permutations = np.arange(self.dims)
-        if reset:
-            self.reset()
-
-    @property
-    def value_landscapes(self):
-        if self._value_landscapes is None:
-            self._value_landscapes = self.get(
-                self.X[::self.step_size], reduced=True)
-        return self._value_landscapes
-
-    def max_distance(self):
-        return 2/self.k
-
-    def distance(self, other):
-        if self == other:
-            return 0
-        return DatasetBandit.metric(self.value_landscapes, other.value_landscapes)
-
-    @property
-    def grid_data(self):
-        return self.value_landscapes
-
-
-    def from_bandit(self, desired_distance, enforce_distance=True,  verbose=False, precomputed_permutations=True):
-
-        if desired_distance == 0:
-            return self
-        best_bandit = None
-        best_goal = INF
-        offset = 0
-        for _ in range(MAX_ATTEMPTS_BANDIT_DISTANCE):
-
-            desired_distance_copy = desired_distance
-            prior_bandit = DatasetBandit( self.precision, reset=False,
-                                         invert=self.invert,  reduce_to=self.reduce_to, family=self.family,  verbose=verbose)
-
-            prior_bandit.reset()
-            prior_bandit.permutations = np.copy(self.permutations)
-
-            if precomputed_permutations and (self.permutations == np.arange(self.dims)).all():
-
-                if self.permutation_list is None:
-                    self.permutation_list = get_permutation_list(self.family)
-                allowable = [p for p in self.permutation_list if np.abs(
-                    p[0]-desired_distance) < BANDIT_DISTANCE_EPSILON]
-                prior_bandit.permutations = allowable[np.random.choice(
-                    len(allowable))][1]
-            else:
-                perms = 1
-
-                if desired_distance_copy > .5:
-                    prior_bandit.invert = not self.invert
-                    desired_distance_copy = 1-desired_distance_copy
-                desired_distance_copy = desired_distance_copy*2
-                possible_perms = prior_bandit.dims
-                step_size = (possible_perms)/min(10, possible_perms)
-                all_perms = prob_round(
-                    [i for i in np.arange(0, possible_perms+1, step_size)])
-                all_perms = list(filter(lambda i: i != 1, all_perms))
-
-                ls = np.array(all_perms)/all_perms[-1]
-                for lo, hi in zip(ls, ls[1:]):
-                    if lo <= desired_distance_copy and hi >= desired_distance_copy:
-                        break
-                rng = hi-lo
-                dist_lo = desired_distance_copy - lo
-                dist_hi = hi-desired_distance_copy
-
-                p_lo = dist_lo/rng
-                p_hi = dist_hi/rng
-                assert not np.isnan(p_lo), (hi, lo, dist_lo, rng,
-                                            p_lo, all_perms, prior_bandit.family)
-                assert not np.isnan(p_hi), (hi, lo, dist_hi, rng,
-                                            p_hi, all_perms, prior_bandit.family)
-
-                perms = int(np.clip(prob_round(np.tanh((.5-np.abs(desired_distance-.5))*4)
-                                               * all_perms[-1])+offset, all_perms[0], all_perms[-1]))
-
-                perms = perms if perms != 1 else np.random.choice([0, 2])
-                prior_bandit.permutations = permutate(
-                    prior_bandit.permutations, perms)
-                attempt = 0
-                while np.abs(np.sum(prior_bandit.permutations != self.permutations)-perms) > step_size/2:
-                    np.random.shuffle(prior_bandit.permutations)
-                    attempt += 1
-                    assert attempt < 100, (perms, all_perms,
-                                           prior_bandit.family)
-
-            max_distance = self.max_distance()
-            scaled_distance = min(1, self.distance(
-                prior_bandit) / max_distance)
-            goal = np.abs(scaled_distance - desired_distance)
-            if (desired_distance <= 0.5 and scaled_distance < desired_distance) or (desired_distance > 0.5 and scaled_distance > desired_distance):
-                if offset < 0:
-                    offset += prior_bandit.dims//6
-                else:
-                    offset += prior_bandit.dims//3
-            else:
-                if offset > 0:
-                    offset -= prior_bandit.dims//6
-                else:
-                    offset -= prior_bandit.dims//3
-            if goal < best_goal:
-                best_bandit, best_goal = prior_bandit, goal
-
-            if not enforce_distance or goal <= BANDIT_DISTANCE_EPSILON:  # or noise < 1e-9:
-
-                break
-        else:
-            prior_bandit = best_bandit
-
-        prior_bandit.int_columns = self.int_columns
-        if not prior_bandit.int_columns:
-            prior_bandit.og_columns = self.og_columns
-            prior_bandit.excl_columns = self.excl_columns
-            prior_bandit.mapped_columns = self.mapped_columns
-        return prior_bandit
-
-    def reset(self):
-        self.cache_id = -1
-        self._value_landscapes = None
-        self.cached_contexts = None
-        self.cached_all_indices = {}
-
-    def get(self, contexts,  reduced=False):
-
-        assert np.shape(contexts)[1:] == (
-            self.dims,), f"context should be of shape {(-1,self.dims)}, but has shape {np.shape(contexts)}"
-
-        if reduced:
-            values = np.copy(self.reduced_oracle.predict(
-                contexts[:,  self.permutations]))
-        else:
-            values = np.copy(self.oracle.predict(
-                contexts[:,  self.permutations]))
-
-        if self.invert:
-            values = 1 - values
-        if self.bernoulli:
-            values = values/np.sum(values, axis=1)[:, np.newaxis]
-
-        return values
-
-    def observe_contexts(self, center=.5,  k=None, cache_index=None, steps=None, step=None):
-        if cache_index is not None:
-            self.contexts = self.cached_contexts[cache_index]
-            self.action_values = self.cached_values[cache_index]
-            self.optimal_value = np.max(self.action_values)
-            return self.contexts
-
-        if k is None:
-            k = self.k
-
-        self.contexts = np.zeros((self.dims,))
-        if steps is not None:
-
-            if steps > len(self.X):  # random experiences
-                all_indices = np.random.choice(len(self.X), size=steps)
-            else:  # closest experiences
-                if tuple(center) not in self.cached_all_indices:
-
-                    self.cached_all_indices[tuple(center)] = self.oracle.kneighbors(
-                        [center], n_neighbors=steps, return_distance=False)[0]
-
-                all_indices = self.cached_all_indices[tuple(center)]
-
-            indices = all_indices[step]
-
-        else:
-            indices = np.random.choice(
-                len(self.X), size=1, replace=k < len(self.X))
-        self.contexts[ :] = self.X[indices]
-
-        self.action_values = self.get(self.contexts[None,:])[0]
-        self.optimal_value = np.max(self.action_values)
-
-        return self.contexts
-
-    def cache_contexts(self, t, cache_id):
-        if self.cached_contexts is None or len(self.cached_contexts) != t:
-            self.cached_contexts = np.zeros((t,  self.dims))
-            indices = np.random.choice(
-                len(self.X), size=t, replace=t < len(self.X))
-            self.cached_contexts[:] = self.X[indices][:, :]
-
-            self.cached_values = self.get(self.cached_contexts[:])
-            assert np.shape(self.cached_values) == (
-                t, self.k), (np.shape(self.cached_values), "vs", (t, self.k))
-            self.cached_rewards = self.sample(self.cached_values)
-
-            assert np.shape(self.cached_rewards) == (t, self.k)
-            self.cache_id = cache_id
-
-        return self.cached_contexts

@@ -1,0 +1,12 @@
+https://inc.ucsd.edu/mplab/users/jake/DuchenneExperiment/DuchenneExperiment.html
+
+Duchenne experiment data accompanying the paper by Whitehill, et al., Whose Vote Should Count More: Optimal Integration of Labels from Labelers of Unknown Expertise", NIPS 2009:
+
+    Click here for the Duchenne labels obtained from the Mechanical Turk workers. Format: each row contains three columns. The first column contains the image ID; the second column contains the labeler ID; the third column contains the label (0 = non-Duchenne, 1 = Duchenne).
+    Click here for the "ground truth" Duchenne labels obtained from expert facial expression coders. Format: each row contains two columns. The first column contains the image ID; the second column contains the ground truth Duchenne label (0 or 1).
+    Click here for a Matlab script to compute the accuracy of estimating the Duchenne labels using GLAD versus Majority Vote.
+    The faces themselves are unfortunately not available as they are proprietary.
+
+The data above were used to obtain the results presented in the NIPS 2009 paper. The data can be used for academic purposes; please cite the paper mentioned above.
+
+In addition, we have since improved upon the GLAD algorithm presented in the NIPS 2009 paper: for better results on the Duchenne data, please see Ruvolo, et al., Exploiting Structure in Crowdsourcing Tasks via Latent Factor Models, MPLab Tech Report 2010. 
