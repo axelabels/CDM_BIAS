@@ -84,8 +84,7 @@ class Agent(object):
 
 
 class OracleExpert(Agent):
-    def __init__(self,bandit, policy,var=.1):
-        self.var=var
+    def __init__(self,bandit, policy):
         super().__init__(bandit,policy)
 
 

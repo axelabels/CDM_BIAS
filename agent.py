@@ -145,7 +145,7 @@ class SafeFalcon(Collective):
                          n_experts,  name=name,  beta=beta, alpha=alpha, expert_spread=expert_spread)
 
     def short_name(self):
-        return f"Falcon{'_F' if self.full else ''}{self.beta}"
+        return f"Meta-CMAB (FALCON)"
 
     def initialize_w(self):
         self.e_sum = 1
@@ -317,7 +317,7 @@ class OnlineCover(Collective):
 
     def short_name(self):
 
-        return f"Cover_{self.psi}_{self.c_mu}_{'_F' if self.simple_first else ''}_{self.cover_size}{'_N' if self.nu else ''}{'_C' if self.cover else ''}"
+        return f"Meta-CMAB (ILTCB)"
 
     @property
     def models(self):
@@ -383,7 +383,6 @@ class OnlineCover(Collective):
                 model.partial_fit(
                     self.meta_contexts[arm:arm+1], [reward-self.bandit.expected_reward])
 
-                base_pred = self.models[0].predict(self.meta_contexts)
                 continue
 
             greedy_actions[i-1] = greedy_choice(
@@ -528,8 +527,8 @@ class LinUCB(Collective):
         self.context_dimension = experts+1
 
     def short_name(self):
-        return f"Meta-CMAB_{self.beta}{'M' if self.min_one else ''}{'F' if self.fixed else ''}{'R' if self.residual else ''}{self.mode if self.mode!='UCB' else ''}{'W' if self.weighted_update else ''}{'_e' if self.epsilon>0 else ''}"
-
+        return f"Meta-CMAB (LinUCB)"
+        
     @property
     def model(self):
         if self._model is None:
@@ -625,7 +624,7 @@ class SupLinUCBVar(Collective):
         assert len(self.ensemble) >= 1
 
     def short_name(self):
-        return f"EXPL3Ensemble_{self.beta}_{self.p}"  # _{self.alpha}"
+        return f"Meta-CMAB (UCB)" 
 
     def reset(self):
         self.t = 0
