@@ -8,11 +8,10 @@ EXPECTED_AVG_REWARD = .5
 
 
 class Collective(Agent):
-    def __init__(self, bandit, policy, n_experts,  gamma=None,  name=None,   alpha=1, beta=1, expert_spread='normal',
+    def __init__(self, bandit, policy, n_experts,  gamma=None,  name=None,   alpha=1, beta=1, 
                  ):
 
         super(Collective, self).__init__(bandit, policy)
-        self.expert_spread = expert_spread
 
         self.beta = beta
         self.alpha = alpha
@@ -72,16 +71,12 @@ class Collective(Agent):
 
 
 class Exp4(Collective):
-    def __init__(self, bandit, policy, n_experts, gamma, name=None,  expert_spread='normal',
-                 confidence_weight=100,
-                 crop=1, prefix='W',):
+    def __init__(self, bandit, policy, n_experts, gamma, name=None,  ):
         super(Exp4, self).__init__(bandit, policy,
-                                   n_experts,  name=name, gamma=gamma,   expert_spread=expert_spread)
-        self.crop = crop
-        self.prefix = prefix
+                                   n_experts,  name=name, gamma=gamma)
+ 
         self.e_sum = 1
         self.w = np.zeros(self.n)
-        self.confidence_weight = confidence_weight
 
     def probabilities(self, contexts):
         self.advice = np.copy(contexts['advice'])
@@ -129,20 +124,14 @@ class Exp4(Collective):
 
 
 class SafeFalcon(Collective):
-    def __init__(self, bandit, policy, n_experts, n_trials, name=None,  expert_spread='normal', mis=None,
-                 confidence_weight=100, alpha=1, full=False, beta=0.85542707*20,
-                 crop=1, prefix='W',):
-        self.crop = crop
-        self.prefix = prefix
+    def __init__(self, bandit, policy, n_experts, n_trials, name=None,  
+                 alpha=1,  beta=20,):
         self.e_sum = 1
-        self.full = full
         self.n_trials = n_trials
         self.beta = beta
-        self.mis = mis
         self.n_experts = n_experts
-        self.confidence_weight = confidence_weight
         super().__init__(bandit, policy,
-                         n_experts,  name=name,  beta=beta, alpha=alpha, expert_spread=expert_spread)
+                         n_experts,  name=name,  beta=beta, alpha=alpha)
 
     def short_name(self):
         return f"Meta-CMAB (FALCON)"
@@ -180,7 +169,6 @@ class SafeFalcon(Collective):
         return lm, self.hat_m
 
     def e_rate(self, T, e):
-        # er = self.n_experts*np.log(1/e)/T # (dlog(1/eps))/T
         er = (self.n_experts+np.log(1/e))/T  # (d+log(1/eps))/T
         return er
 
@@ -297,21 +285,19 @@ class SafeFalcon(Collective):
 
 
 class OnlineCover(Collective):
-    def __init__(self, bandit, policy, experts, name=None, expert_spread='normal',
-                 alpha=1,  cover_size=2, simple_first=True, epsilon=1e-10, nu=True, psi=0.01, cover=False, c_mu=0.05):
+    def __init__(self, bandit, policy, experts, name=None, 
+                 alpha=1,  cover_size=2, epsilon=1e-10, psi=0.01,  c_mu=0.05):
 
         super().__init__(bandit, policy,
-                         experts, name=name, alpha=alpha, expert_spread=expert_spread)
+                         experts, name=name, alpha=alpha)
 
-        self.simple_first = simple_first
         self.epsilon = epsilon
-        self.nu = nu
+    
         self.c_mu = c_mu
         self.experts = experts
-        self.cover = cover
-        self.policy.eps = 0 if self.nu else self.epsilon
+        self.policy.eps = 0 
         self._models = None
-        self.context_dimension = experts+1
+        self.context_dimension = experts
         self.psi = psi
         self.cover_size = cover_size
 
@@ -371,8 +357,7 @@ class OnlineCover(Collective):
 
         mu = self.epsilon/self.bandit.k
 
-        smoothed_policy = self.epsilon + \
-            (1-self.epsilon)*self.policy.pi if self.nu else self.policy.pi
+        smoothed_policy = self.epsilon + (1-self.epsilon)*self.policy.pi 
 
         r_v = np.zeros(self.bandit.k)
         r_v[arm] = reward-self.bandit.expected_reward
@@ -403,11 +388,11 @@ class OnlineCover(Collective):
 
 class MAB(Collective):
 
-    def __init__(self, bandit, policy, experts,  include_time=False, include_ctx=True, expert_spread='normal',
+    def __init__(self, bandit, policy, experts,  
                  name=None,  gamma=None):
 
         super().__init__(bandit, policy,
-                         experts, gamma=gamma,  name=name,  expert_spread=expert_spread)
+                         experts, gamma=gamma,  name=name)
 
     def short_name(self):
         return "Meta-MAB"
@@ -511,20 +496,17 @@ class MultiOnlineRidge():
 
 
 class LinUCB(Collective):
-    def __init__(self, bandit, policy, experts, beta=1, name=None, trials=1, expert_spread='normal', epsilon=0,
-                 alpha=10, min_one=False, fixed=False, residual=False, mode='UCB', weighted_update=False):
+    def __init__(self, bandit, policy, experts, beta=1, name=None, trials=1,  epsilon=0,
+                 alpha=1,  fixed=False,  mode='UCB'):
 
         super().__init__(bandit, policy,
-                         experts, name=name, alpha=alpha, beta=beta, expert_spread=expert_spread)
+                         experts, name=name, alpha=alpha, beta=beta)
         self.trials = trials
         self.epsilon = epsilon
         self._model = None
-        self.min_one = min_one
         self.fixed = fixed
         self.mode = mode
-        self.weighted_update = weighted_update
-        self.residual = residual
-        self.context_dimension = experts+1
+        self.context_dimension = experts
 
     def short_name(self):
         return f"Meta-CMAB (LinUCB)"
@@ -572,20 +554,7 @@ class LinUCB(Collective):
 
         assert self.context_dimension > 0
 
-        if self.mode == 'TS' and not isinstance(self.beta, Number):
-
-            beta1 = np.sqrt(.5*np.log(2*self.trials*self.bandit.k*self.trials))
-            beta3 = 0 if self.t == 0 else np.sqrt(
-                max(0, 2*np.log(self.trials)+np.log(1/np.linalg.det(self.model.model["A_inv"]))))
-            beta4 = 1
-
-            adapt_beta = np.array([0.00276422,  0.00448784, 0.04283073]).dot(
-                [beta1, beta3, beta4])
-            return mu + sigma*adapt_beta
-
-        else:
-
-            return mu + sigma*self.beta+eps_sigma
+        return mu + sigma*self.beta+eps_sigma
 
     def reset(self):
         super().reset()
@@ -608,19 +577,17 @@ class LinUCB(Collective):
 
 
 class SupLinUCBVar(Collective):
-    def __init__(self, bandit, policy, experts, beta=.1, name=None, expert_spread='normal', p=1,
+    def __init__(self, bandit, policy, experts, beta=.1, name=None, 
                  alpha=1, ):
 
         self.bandit = bandit
-
         self._model = None
         self.context_dimension = experts
         self.alpha = alpha
-        self.p = p
         self.beta = beta
         self.name = None
-        self.ensemble = [EXPL3(bandit, policy, experts, beta, name, expert_spread, alpha=alpha, thresh=(2**-l))
-                         for l in np.arange(1, max(1, (np.log(np.sqrt(self.bandit.k))/np.log(2))**p)+1e-10)]
+        self.ensemble = [EXPL3(bandit, policy, experts, beta, name,  alpha=alpha, thresh=(2**-l))
+                         for l in np.arange(1, max(1, (np.log(np.sqrt(self.bandit.k))/np.log(2)))+1e-10)]
         assert len(self.ensemble) >= 1
 
     def short_name(self):
@@ -649,20 +616,20 @@ class SupLinUCBVar(Collective):
 
     def observe(self, reward, arm):
 
-        for e in self.ensemble[::1]:
+        for e in self.ensemble:
             e.meta_contexts = self.active_expl.meta_contexts
-            e.observe(reward, arm, force=True)
+            e.observe(reward, arm)
             if e == self.active_expl:
                 break
         self.t += 1
 
 
 class EXPL3(Collective):
-    def __init__(self, bandit, policy, experts, beta=1, name=None, expert_spread='normal', thresh=0,
+    def __init__(self, bandit, policy, experts, beta=1, name=None,  thresh=0,
                  alpha=1, ):
 
         super().__init__(bandit, policy,
-                         experts, name=name, alpha=alpha, beta=beta, expert_spread=expert_spread)
+                         experts, name=name, alpha=alpha, beta=beta)
         self.thresh = thresh
         self._model = None
         self.context_dimension = experts+1
@@ -717,15 +684,13 @@ class EXPL3(Collective):
     def reset(self):
         super().reset()
 
-    def observe(self, reward, arm, force=False):
+    def observe(self, reward, arm):
         self.context_history.append(self.meta_contexts[arm])
         self.action_history.append(arm)
 
-        mu, sigma = self.get_values(self.meta_contexts)
-        if np.max(sigma) > self.thresh or force:
-            action_context = self.meta_contexts[arm]
+        action_context = self.meta_contexts[arm]
 
-            self.model.partial_fit(
-                [action_context], [reward-self.bandit.expected_reward])
+        self.model.partial_fit(
+            [action_context], [reward-self.bandit.expected_reward])
 
         self.t += 1
