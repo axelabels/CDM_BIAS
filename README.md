@@ -1,3 +1,6 @@
+[![DOI](https://zenodo.org/badge/429481250.svg)](https://zenodo.org/badge/latestdoi/429481250)
+
+
 This repository contains the code to reproduce the results of our paper "Dealing with Expert Bias in Collective Decision-Making". If you use this code in your own research, please cite this paper:
 
 ```
