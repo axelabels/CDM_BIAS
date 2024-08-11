@@ -1,0 +1,7 @@
+h5py==2.10.0
+numpy==1.21.6
+pandas==2.2.2
+pandas_stubs==1.2.0.62
+scikit_learn==1.5.1
+scipy==1.7.3
+tqdm==4.64.0
